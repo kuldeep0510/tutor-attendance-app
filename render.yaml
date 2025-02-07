@@ -14,6 +14,8 @@ services:
         sync: false # This will be set manually in Render dashboard
       - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
         value: "true"
+      - key: PUPPETEER_EXECUTABLE_PATH
+        value: /usr/bin/google-chrome-stable
       - key: NODE_ENV
         value: production
       # Chrome specific flags
