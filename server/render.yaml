@@ -12,7 +12,12 @@ services:
         value: tutor-app
       - key: ALLOWED_ORIGINS
         sync: false # This will be set manually in Render dashboard
-      - key: PUPPETEER_EXECUTABLE_PATH
-        value: /usr/bin/google-chrome
+      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
+        value: "true"
+      - key: NODE_ENV
+        value: production
+      # Chrome specific flags
+      - key: PUPPETEER_ARGS
+        value: "--no-sandbox --disable-setuid-sandbox"
     buildCommand: docker build -t whatsapp-server .
-    startCommand: docker run -p $PORT:3001 whatsapp-server
+    startCommand: docker run -p $PORT:3001 --cap-add=SYS_ADMIN whatsapp-server
