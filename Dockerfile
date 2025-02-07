@@ -7,6 +7,8 @@ WORKDIR /usr/src/app
 
 # Copy package files and install dependencies from server directory
 COPY server/package*.json ./
+
+# Install dependencies as root
 RUN npm install
 
 # Copy server source code
@@ -15,13 +17,18 @@ COPY server/ .
 # Build TypeScript
 RUN npm run build
 
-# Add puppeteer user (needed for running Chrome)
+# Create a non-root user
 RUN groupadd -r pptruser && useradd -r -g pptruser -G audio,video pptruser \
     && mkdir -p /home/pptruser/Downloads \
     && chown -R pptruser:pptruser /home/pptruser \
     && chown -R pptruser:pptruser /usr/src/app
 
-# Run everything after as non-privileged user
+# Set permissions for npm cache and other directories
+RUN mkdir -p /home/pptruser/.npm && chown -R pptruser:pptruser /home/pptruser/.npm \
+    && mkdir -p /.npm && chown -R pptruser:pptruser /.npm \
+    && chown -R pptruser:pptruser /usr/src/app/node_modules
+
+# Switch to non-root user
 USER pptruser
 
 # Expose port
