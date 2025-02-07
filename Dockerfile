@@ -19,14 +19,17 @@ WORKDIR /app
 # Copy package files
 COPY server/package*.json ./
 
-# Install app dependencies
+# Install all dependencies (including devDependencies for TypeScript compilation)
 RUN npm install
 
 # Copy source
 COPY server/ .
 
-# Build TypeScript
-RUN npm run build
+# Build TypeScript with explicit tsc path
+RUN npx tsc
+
+# Remove devDependencies
+RUN npm prune --production
 
 EXPOSE 3001
 
