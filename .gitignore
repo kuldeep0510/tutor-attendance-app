@@ -1,6 +1,5 @@
 # dependencies
 /node_modules
-/server/node_modules
 /.pnp
 .pnp.js
 
@@ -25,6 +24,7 @@ yarn-error.log*
 
 # local env files
 .env*.local
+.env
 
 # vercel
 .vercel
@@ -33,6 +33,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# WhatsApp auth files
-.wwebjs_auth/
-.wwebjs_cache/
+# IDE
+.vscode/
+.idea/

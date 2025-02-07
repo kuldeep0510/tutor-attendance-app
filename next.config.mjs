@@ -14,12 +14,37 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   images: {
-    unoptimized: true,
+    unoptimized: false,
+    minimumCacheTTL: 60,
   },
+  compiler: {
+    removeConsole: process.env.NODE_ENV === 'production',
+  },
+  compress: true,
   experimental: {
     webpackBuildWorker: true,
     parallelServerBuildTraces: true,
     parallelServerCompiles: true,
+  },
+  headers: async () => [
+    {
+      // Ensure WhatsApp API routes bypass cache
+      source: '/api/whatsapp/:path*',
+      headers: [
+        {
+          key: 'Cache-Control',
+          value: 'no-store, max-age=0',
+        },
+      ],
+    },
+  ],
+  async rewrites() {
+    return [
+      {
+        source: '/api/whatsapp/:path*',
+        destination: '/api/whatsapp/:path*',
+      },
+    ]
   },
 }
 

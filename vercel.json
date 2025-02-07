@@ -7,5 +7,11 @@
     "NEXT_PUBLIC_SUPABASE_URL": "@next_public_supabase_url",
     "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@next_public_supabase_anon_key",
     "NEXT_PUBLIC_WHATSAPP_SERVER_URL": "@next_public_whatsapp_server_url"
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/whatsapp-api/:path*",
+      "destination": "https://<your-whatsapp-server-url>/:path*"
+    }
+  ]
 }
