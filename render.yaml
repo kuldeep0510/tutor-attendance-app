@@ -8,18 +8,24 @@ services:
     envVars:
       - key: PORT
         value: 3001
-      - key: WHATSAPP_CLIENT_ID
-        value: tutor-app
-      - key: ALLOWED_ORIGINS
-        sync: false # This will be set manually in Render dashboard
-      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
-        value: "true"
-      - key: PUPPETEER_EXECUTABLE_PATH
-        value: /usr/bin/google-chrome-stable
       - key: NODE_ENV
         value: production
-      # Chrome specific flags
+      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
+        value: "true"
+      - key: ALLOWED_ORIGINS
+        sync: false # This will be set manually in Render dashboard
       - key: PUPPETEER_ARGS
         value: "--no-sandbox --disable-setuid-sandbox"
+      - key: CHROME_BIN
+        value: /usr/bin/google-chrome-stable
+      - key: PUPPETEER_EXECUTABLE_PATH
+        value: /usr/bin/google-chrome-stable
     dockerfilePath: ./Dockerfile # Specify root-level Dockerfile
-    dockerCommand: node dist/index.js --no-sandbox --disable-setuid-sandbox
+    # Additional Docker settings for Chrome in container
+    disk:
+      name: tmp
+      mountPath: /tmp
+      sizeGB: 1
+    scaling:
+      minInstances: 1
+      maxInstances: 1
