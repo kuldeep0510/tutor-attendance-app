@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: whatsapp-server
+    env: docker
+    region: singapore # Closest to India
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: PORT
+        value: 3001
+      - key: WHATSAPP_CLIENT_ID
+        value: tutor-app
+      - key: ALLOWED_ORIGINS
+        sync: false # This will be set manually in Render dashboard
+      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
+        value: "true"
+      - key: NODE_ENV
+        value: production
+      # Chrome specific flags
+      - key: PUPPETEER_ARGS
+        value: "--no-sandbox --disable-setuid-sandbox"
+    dockerfilePath: ./Dockerfile # Specify root-level Dockerfile
+    dockerCommand: node dist/index.js --no-sandbox --disable-setuid-sandbox
