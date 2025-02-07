@@ -40,6 +40,8 @@ Thumbs.db
 /server/node_modules
 /server/dist
 /server/.env
+/server/node_modules/whatsapp-web.js
+/server-files.zip
 
 # WhatsApp sessions
 /server/.wwebjs_auth/
