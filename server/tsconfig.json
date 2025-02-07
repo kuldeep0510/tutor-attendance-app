@@ -2,9 +2,9 @@
   "compilerOptions": {
     "target": "ES2020",
     "module": "commonjs",
-    "lib": ["es2020", "dom"],
-    "outDir": "./dist",
-    "rootDir": "./src",
+    "lib": ["es2020"],
+    "outDir": "dist",
+    "rootDir": "src",
     "strict": true,
     "moduleResolution": "node",
     "esModuleInterop": true,
@@ -18,19 +18,14 @@
       "@/*": ["src/*"]
     },
     "typeRoots": [
-      "./node_modules/@types",
-      "./src/types",
-      "./node_modules"
+      "./node_modules/@types"
     ],
     "types": [
-      "node",
-      "express",
-      "dotenv"
+      "node"
     ]
   },
   "include": [
-    "src/**/*.ts",
-    "src/**/*.js"
+    "src/**/*"
   ],
   "exclude": [
     "node_modules",
