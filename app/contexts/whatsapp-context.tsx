@@ -5,6 +5,13 @@ import { useToast } from "@/components/ui/use-toast";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { checkWhatsAppStatus, initializeConnection, logoutWhatsApp, sendWhatsAppMessage } from "@/app/utils/whatsapp";
 
+interface WhatsAppStatus {
+  isConnected: boolean;
+  qr?: string;
+  hasSession?: boolean;
+  isTerminated?: boolean;
+}
+
 export interface WhatsAppContextType {
   isConnecting: boolean;
   isConnected: boolean;
@@ -13,7 +20,7 @@ export interface WhatsAppContextType {
   lastActivity: number;
   connect: (restore?: boolean) => Promise<void>;
   disconnect: () => Promise<void>;
-  checkConnection: () => Promise<void>;
+  checkConnection: () => Promise<WhatsAppStatus | null>;
   sendMessage: (phone: string, message: string, pdfData?: string) => Promise<void>;
 }
 
@@ -81,28 +88,45 @@ export function WhatsAppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const checkConnection = async () => {
-    if (!userId) return;
+    if (!userId) return null;
 
     try {
       const status = await checkWhatsAppStatus();
+      const wasConnected = isConnected;
       setIsConnected(status.isConnected);
+      
       if (status.qr) {
         setQrCode(status.qr);
+      } else if (status.isConnected) {
+        setQrCode(null);
       }
+      
       const currentTime = Date.now();
       setLastActivity(currentTime);
       
       if (status.isConnected) {
         localStorage.setItem('whatsapp_connected', 'true');
         localStorage.setItem('whatsapp_last_activity', currentTime.toString());
+        
+        // If we just got connected, show a success message
+        if (!wasConnected) {
+          setIsConnecting(false);
+          toast({
+            title: "WhatsApp Connected",
+            description: "Your WhatsApp account is now connected",
+          });
+        }
       } else {
         localStorage.removeItem('whatsapp_connected');
         localStorage.removeItem('whatsapp_last_activity');
       }
+      
+      return status;
     } catch (error) {
       console.error("Status check error:", error);
       setIsConnected(false);
       setIsConnecting(false);
+      return null;
     }
   };
 
@@ -144,11 +168,14 @@ export function WhatsAppProvider({ children }: { children: React.ReactNode }) {
 
   // Monitor connection status
   useEffect(() => {
-    if (!userId || !isConnected) return;
+    if (!userId) return;
 
     let checkCount = 0;
     const MAX_SILENT_FAILURES = 3;
     let consecutiveFailures = 0;
+
+    // More frequent status checks initially when connecting
+    const interval = isConnecting ? 5000 : 15000;
 
     const monitor = setInterval(async () => {
       try {
@@ -158,7 +185,7 @@ export function WhatsAppProvider({ children }: { children: React.ReactNode }) {
         if (!status.isConnected) {
           consecutiveFailures++;
 
-          if (consecutiveFailures >= MAX_SILENT_FAILURES) {
+          if (consecutiveFailures >= MAX_SILENT_FAILURES && !isConnecting) {
             setError('Connection lost. Please reconnect WhatsApp.');
             resetState(true);
             localStorage.setItem('whatsapp_terminated', 'true');
@@ -176,10 +203,10 @@ export function WhatsAppProvider({ children }: { children: React.ReactNode }) {
         console.error('Monitor check failed:', error);
         consecutiveFailures++;
       }
-    }, 30000);
+    }, interval);
 
     return () => clearInterval(monitor);
-  }, [userId, isConnected]);
+  }, [userId, isConnecting, isConnected]);
 
   const connect = async (restore: boolean = false) => {
     if (isConnecting) return; // Prevent multiple connection attempts
@@ -198,6 +225,16 @@ export function WhatsAppProvider({ children }: { children: React.ReactNode }) {
       
       if (result.qr) {
         setQrCode(result.qr);
+        // Start rapid polling when QR code is shown
+        const pollInterval = setInterval(async () => {
+          const status = await checkConnection();
+          if (status?.isConnected || !isConnecting) {
+            clearInterval(pollInterval);
+          }
+        }, 2000); // Poll every 2 seconds
+        
+        // Clear interval after 2 minutes max
+        setTimeout(() => clearInterval(pollInterval), 120000);
       }
       
       if (result.connected) {
@@ -208,6 +245,11 @@ export function WhatsAppProvider({ children }: { children: React.ReactNode }) {
         setLastActivity(currentTime);
         localStorage.setItem('whatsapp_connected', 'true');
         localStorage.setItem('whatsapp_last_activity', currentTime.toString());
+        
+        toast({
+          title: "WhatsApp Connected",
+          description: "Your WhatsApp account is now connected",
+        });
       }
     } catch (error) {
       handleError(error instanceof Error ? error.message : "Failed to connect");
