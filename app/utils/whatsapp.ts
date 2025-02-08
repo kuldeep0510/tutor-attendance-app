@@ -18,8 +18,8 @@ const defaultOptions: RequestInit = {
 async function fetchWithRetry(
   url: string,
   options: RequestInit,
-  retries = 5, // Increased retries
-  backoff = 2000 // Increased initial backoff
+  retries = 3, // Reduced retries to prevent queue buildup
+  backoff = 2000
 ): Promise<Response> {
   try {
     const response = await fetch(url, options);
@@ -29,8 +29,8 @@ async function fetchWithRetry(
       const errorText = await response.text();
       console.log(`Request failed with status ${response.status}: ${errorText}`);
       
-      // Don't retry on auth errors or invalid requests
-      if (response.status !== 401 && response.status !== 400) {
+      // Don't retry on auth errors, invalid requests, or if session is in progress
+      if (response.status !== 401 && response.status !== 400 && !errorText.includes('already initializing')) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       return response;
@@ -63,8 +63,12 @@ async function fetchWithRetry(
  * Get the base URL for WhatsApp API requests based on environment
  */
 function getBaseUrl(): string {
-  return '/whatsapp-api';
+  return '/api/whatsapp'; // Keep using the API route since Vercel handles the forwarding
 }
+
+// Track the last connection attempt time
+let lastConnectionAttempt = 0;
+const MIN_CONNECTION_INTERVAL = 5000; // Minimum 5 seconds between connection attempts
 
 /**
  * Execute a WhatsApp API request with consistent options
@@ -88,6 +92,15 @@ async function whatsappRequest(
   };
 
   try {
+    // For connect requests, implement rate limiting
+    if (endpoint === '/connect') {
+      const now = Date.now();
+      if (now - lastConnectionAttempt < MIN_CONNECTION_INTERVAL) {
+        throw new Error('Please wait a few seconds before trying to connect again');
+      }
+      lastConnectionAttempt = now;
+    }
+
     const response = await fetchWithRetry(url, finalOptions);
     if (!response.ok) {
       let errorMessage: string;
@@ -188,10 +201,19 @@ export async function initializeConnection(restore: boolean = false): Promise<{ 
 
     const connectRes = await whatsappRequest('/connect', options);
     
+    if (!connectRes.ok && connectRes.status !== 409) { // 409 means session is already initializing
+      throw new Error(await connectRes.text());
+    }
+    
     const data = await connectRes.json();
     
     if (data.status === 'error') {
-      throw new Error(data.error);
+      if (data.error.includes('already initializing')) {
+        // If session is initializing, just wait for status updates
+        console.log('Session is already initializing, waiting for updates...');
+      } else {
+        throw new Error(data.error);
+      }
     }
 
     if (data.data?.connected) {
@@ -202,9 +224,9 @@ export async function initializeConnection(restore: boolean = false): Promise<{ 
       return { qr: data.data.qr };
     }
 
-    // If no immediate connection or QR, start polling for status
+    // Start polling for status
     let attempts = 0;
-    const maxAttempts = 60; // Increased to 60 seconds with 1-second intervals
+    const maxAttempts = 60; // 60 seconds with 1-second intervals
     
     while (attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, 1000));
