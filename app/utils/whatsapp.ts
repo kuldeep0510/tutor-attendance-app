@@ -11,7 +11,7 @@ const defaultOptions: RequestInit = {
   },
   mode: 'cors',
   credentials: 'include',
-  signal: AbortSignal.timeout(60000) // 60 second timeout using AbortSignal
+  signal: AbortSignal.timeout(120000) // 120 second timeout using AbortSignal
 }
 
 // Add retry mechanism for failed requests
@@ -51,7 +51,7 @@ async function fetchWithRetry(
       url, 
       {
         ...options,
-        signal: AbortSignal.timeout(60000) // Reset timeout for retry
+        signal: AbortSignal.timeout(120000) // Reset timeout for retry
       },
       retries - 1,
       Math.min(backoff * 2, 15000) // Exponential backoff, max 15s
@@ -63,7 +63,12 @@ async function fetchWithRetry(
  * Get the base URL for WhatsApp API requests based on environment
  */
 function getBaseUrl(): string {
-  return '/api/whatsapp';
+  // Use the environment variable for direct server communication
+  const serverUrl = process.env.NEXT_PUBLIC_WHATSAPP_SERVER_URL;
+  if (!serverUrl) {
+    throw new Error('NEXT_PUBLIC_WHATSAPP_SERVER_URL environment variable is not set');
+  }
+  return `${serverUrl}/whatsapp`;
 }
 
 /**
@@ -204,7 +209,7 @@ export async function initializeConnection(restore: boolean = false): Promise<{ 
 
     // If no immediate connection or QR, start polling for status
     let attempts = 0;
-    const maxAttempts = 30; // 30 seconds with 1-second intervals
+    const maxAttempts = 60; // Increased to 60 seconds with 1-second intervals
     
     while (attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, 1000));

@@ -4,14 +4,19 @@
   "framework": "nextjs",
   "regions": ["bom1"],
   "env": {
-    "NEXT_PUBLIC_SUPABASE_URL": "@next_public_supabase_url",
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@next_public_supabase_anon_key",
-    "NEXT_PUBLIC_WHATSAPP_SERVER_URL": "@next_public_whatsapp_server_url"
+    "NEXT_PUBLIC_SUPABASE_URL": "${NEXT_PUBLIC_SUPABASE_URL}",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "${NEXT_PUBLIC_SUPABASE_ANON_KEY}",
+    "NEXT_PUBLIC_WHATSAPP_SERVER_URL": "${NEXT_PUBLIC_WHATSAPP_SERVER_URL}"
   },
   "rewrites": [
     {
-      "source": "/whatsapp-api/:path*",
-      "destination": "https://<your-whatsapp-server-url>/:path*"
+      "source": "/api/whatsapp/:path*",
+      "destination": "${NEXT_PUBLIC_WHATSAPP_SERVER_URL}/whatsapp/:path*"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "/api/:path*"
     }
-  ]
+  ],
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD ./package-lock.json"
 }
