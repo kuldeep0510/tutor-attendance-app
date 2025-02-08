@@ -11,7 +11,7 @@
   "rewrites": [
     {
       "source": "/whatsapp-api/:path*",
-      "destination": "https://<your-whatsapp-server-url>/:path*"
+      "destination": "https://whatsapp-server-4q9w.onrender.com/:path*"
     }
   ]
 }
