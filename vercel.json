@@ -14,6 +14,10 @@
       "destination": "${NEXT_PUBLIC_WHATSAPP_SERVER_URL}/whatsapp/:path*"
     },
     {
+      "source": "/whatsapp-api/:path*",
+      "destination": "https://whatsapp-server-4q9w.onrender.com/:path*"
+    },
+    {
       "source": "/api/:path*",
       "destination": "/api/:path*"
     }
