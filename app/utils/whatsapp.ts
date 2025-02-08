@@ -63,12 +63,7 @@ async function fetchWithRetry(
  * Get the base URL for WhatsApp API requests based on environment
  */
 function getBaseUrl(): string {
-  // Use the environment variable for direct server communication
-  const serverUrl = process.env.NEXT_PUBLIC_WHATSAPP_SERVER_URL;
-  if (!serverUrl) {
-    throw new Error('NEXT_PUBLIC_WHATSAPP_SERVER_URL environment variable is not set');
-  }
-  return `${serverUrl}/whatsapp`;
+  return '/whatsapp-api';
 }
 
 /**
