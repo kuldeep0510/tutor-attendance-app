@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState, useRef } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { checkWhatsAppStatus, initializeConnection, logoutWhatsApp, sendWhatsAppMessage } from "@/app/utils/whatsapp";
@@ -33,6 +33,8 @@ export function WhatsAppProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [lastActivity, setLastActivity] = useState<number>(Date.now());
   const [userId, setUserId] = useState<string | null>(null);
+  const lastStatusCheckRef = useRef<number>(0);
+  const statusCheckInProgressRef = useRef<boolean>(false);
   const { toast } = useToast();
   const supabase = createClientComponentClient();
 
@@ -90,7 +92,16 @@ export function WhatsAppProvider({ children }: { children: React.ReactNode }) {
   const checkConnection = async () => {
     if (!userId) return null;
 
+    // Implement rate limiting for status checks
+    const now = Date.now();
+    if (statusCheckInProgressRef.current || (now - lastStatusCheckRef.current < 1000)) {
+      return null;
+    }
+
     try {
+      statusCheckInProgressRef.current = true;
+      lastStatusCheckRef.current = now;
+
       const status = await checkWhatsAppStatus();
       const wasConnected = isConnected;
       setIsConnected(status.isConnected);
@@ -127,6 +138,8 @@ export function WhatsAppProvider({ children }: { children: React.ReactNode }) {
       setIsConnected(false);
       setIsConnecting(false);
       return null;
+    } finally {
+      statusCheckInProgressRef.current = false;
     }
   };
 
@@ -163,7 +176,9 @@ export function WhatsAppProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
-    handleConnectionCheck();
+    if (!statusCheckInProgressRef.current) {
+      handleConnectionCheck();
+    }
   }, [userId]);
 
   // Monitor connection status
@@ -178,6 +193,10 @@ export function WhatsAppProvider({ children }: { children: React.ReactNode }) {
     const interval = isConnecting ? 5000 : 15000;
 
     const monitor = setInterval(async () => {
+      if (statusCheckInProgressRef.current) {
+        return; // Skip if a check is already in progress
+      }
+
       try {
         checkCount++;
         const status = await checkWhatsAppStatus();
@@ -209,7 +228,7 @@ export function WhatsAppProvider({ children }: { children: React.ReactNode }) {
   }, [userId, isConnecting, isConnected]);
 
   const connect = async (restore: boolean = false) => {
-    if (isConnecting) return; // Prevent multiple connection attempts
+    if (isConnecting || statusCheckInProgressRef.current) return; // Prevent multiple connection attempts
 
     try {
       localStorage.removeItem('whatsapp_terminated');
@@ -225,10 +244,15 @@ export function WhatsAppProvider({ children }: { children: React.ReactNode }) {
       
       if (result.qr) {
         setQrCode(result.qr);
+        let pollCount = 0;
         // Start rapid polling when QR code is shown
         const pollInterval = setInterval(async () => {
+          if (statusCheckInProgressRef.current) {
+            return; // Skip if check is in progress
+          }
+          pollCount++;
           const status = await checkConnection();
-          if (status?.isConnected || !isConnecting) {
+          if (status?.isConnected || !isConnecting || pollCount >= 60) {
             clearInterval(pollInterval);
           }
         }, 2000); // Poll every 2 seconds
@@ -261,6 +285,8 @@ export function WhatsAppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const disconnect = async () => {
+    if (statusCheckInProgressRef.current) return;
+
     try {
       const success = await logoutWhatsApp();
       
