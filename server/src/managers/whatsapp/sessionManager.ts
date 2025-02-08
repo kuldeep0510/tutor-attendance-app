@@ -41,7 +41,7 @@ export class SessionManager {
   }
 
   private sessionLocks: Map<string, Promise<void>> = new Map();
-  private activeInitializations: Set<string> = new Set();
+  private activeInitializations: Map<string, { promise: Promise<SessionData>; isTerminated: boolean }> = new Map();
 
   private async acquireLock(sessionId: string): Promise<() => void> {
     while (this.sessionLocks.has(sessionId)) {
@@ -69,90 +69,84 @@ export class SessionManager {
     return state !== null && !state.isTerminated;
   }
 
+  private async waitForInitialization(sessionId: string): Promise<SessionData | null> {
+    const activeInit = this.activeInitializations.get(sessionId);
+    if (!activeInit) return null;
+
+    try {
+      console.log(`Waiting for existing initialization of session ${sessionId}...`);
+      return await activeInit.promise;
+    } catch (error) {
+      console.error(`Error waiting for initialization of ${sessionId}:`, error);
+      return null;
+    }
+  }
+
   public async createSession(userId: string, force: boolean = false): Promise<SessionData> {
     const sessionId = this.generateSessionId(userId);
     this.sessions.set(userId, sessionId);
     console.log(`Creating session for ${sessionId} (force: ${force})`);
     
-    if (this.activeInitializations.has(sessionId)) {
+    // Check for existing initialization
+    const existingInit = this.activeInitializations.get(sessionId);
+    if (existingInit && !existingInit.isTerminated) {
       console.log(`Session ${sessionId} is already initializing, waiting...`);
-      while (this.activeInitializations.has(sessionId)) {
-        await sleep(1000);
-      }
-      // Return existing session if it was successfully initialized
-      const existingSession = this.clients.get(sessionId);
-      if (existingSession?.isReady) {
-        return existingSession;
-      }
+      const result = await this.waitForInitialization(sessionId);
+      if (result) return result;
     }
     
     const releaseLock = await this.acquireLock(sessionId);
-    try {
-      // Check session state first
-      const isValidSession = await this.checkSessionState(sessionId);
-      
-      // Check if session already exists and is fully initialized
-      const existingSession = this.clients.get(sessionId);
-      if (existingSession?.client && !force && !existingSession.isInitializing && isValidSession) {
-        console.log(`Reusing existing session for ${sessionId}`);
-        releaseLock();
-        return existingSession;
-      }
-      
-      // Clean up any existing session
-      if (existingSession || force || !isValidSession) {
+    
+    // Create a new initialization promise
+    const initPromise = (async () => {
+      try {
+        // Clean up any existing session first
         await this.cleanupSession(userId, true);
         await sleep(1000);
-      }
 
-      // Mark session as initializing
-      this.activeInitializations.add(sessionId);
-
-      // Initialize session state
-      await writeSessionState(sessionId, this.config.AUTH_FOLDER, {
-        isTerminated: false,
-        lastModified: Date.now()
-      });
-
-      console.log(`Initializing new session for ${sessionId}`);
-      const client = await this.clientInitializer.initializeClient(sessionId, !force);
-
-      const now = Date.now();
-      const session: SessionData = {
-        client,
-        qr: null,
-        isReady: false,
-        isInitializing: true,
-        lastActivity: now,
-        reconnectAttempts: 0,
-        hasSession: true,
-        lastUsed: now,
-        isTerminated: false
-      };
-
-      this.clients.set(sessionId, session);
-
-      // Set up event handler
-      const eventHandler = new SessionEventHandler(
-        sessionId,
-        session,
-        this.config,
-        (data) => this.updateSession(sessionId, data),
-        (sid, force) => this.cleanupSession(this.getSessionUserId(sid) || '', force),
-        (sid) => this.reconnectSession(sid)
-      );
-
-      // Set up event handlers before initialization
-      eventHandler.setupEvents(client);
-      this.eventHandlers.set(sessionId, eventHandler);
-
-      try {
-        console.log(`Starting client initialization for ${sessionId}`);
+        // Check session state
+        const isValidSession = await this.checkSessionState(sessionId);
         
-        // Wait for QR scan or ready state
+        // Initialize session state
+        await writeSessionState(sessionId, this.config.AUTH_FOLDER, {
+          isTerminated: false,
+          lastModified: Date.now()
+        });
+
+        console.log(`Initializing new session for ${sessionId}`);
+        const client = await this.clientInitializer.initializeClient(sessionId, !force);
+
+        const now = Date.now();
+        const session: SessionData = {
+          client,
+          qr: null,
+          isReady: false,
+          isInitializing: true,
+          lastActivity: now,
+          reconnectAttempts: 0,
+          hasSession: true,
+          lastUsed: now,
+          isTerminated: false
+        };
+
+        this.clients.set(sessionId, session);
+
+        // Set up event handler
+        const eventHandler = new SessionEventHandler(
+          sessionId,
+          session,
+          this.config,
+          (data) => this.updateSession(sessionId, data),
+          (sid, force) => this.cleanupSession(this.getSessionUserId(sid) || '', force),
+          (sid) => this.reconnectSession(sid)
+        );
+
+        eventHandler.setupEvents(client);
+        this.eventHandlers.set(sessionId, eventHandler);
+
+        console.log(`Starting client initialization for ${sessionId}`);
         await this.clientInitializer.waitForQROrInit(client, sessionId);
         
-        // Update session state
         session.isInitializing = false;
         if (await client.getState() === 'CONNECTED') {
           session.isReady = true;
@@ -161,21 +155,21 @@ export class SessionManager {
         return session;
       } catch (error) {
         console.error(`Failed to initialize client for ${sessionId}:`, error);
-        session.isInitializing = false;
         await this.cleanupSession(userId, true);
         throw error;
       } finally {
         this.activeInitializations.delete(sessionId);
+        releaseLock();
       }
-      
-    } catch (error) {
-      console.error(`Error creating session for ${sessionId}:`, error);
-      await this.cleanupSession(userId, true);
-      this.activeInitializations.delete(sessionId);
-      throw error;
-    } finally {
-      releaseLock();
-    }
+    })();
+
+    // Store the initialization promise
+    this.activeInitializations.set(sessionId, { 
+      promise: initPromise,
+      isTerminated: false
+    });
+
+    return initPromise;
   }
 
   private async reconnectSession(sessionId: string): Promise<SessionData> {
@@ -185,6 +179,12 @@ export class SessionManager {
       throw new Error(`No user found for session ${sessionId}`);
     }
     try {
+      // Mark any existing initialization as terminated
+      const existingInit = this.activeInitializations.get(sessionId);
+      if (existingInit) {
+        existingInit.isTerminated = true;
+      }
+
       await this.cleanupSession(userId, true);
       await sleep(1000);
       return await this.createSession(userId, true);
@@ -210,6 +210,12 @@ export class SessionManager {
     }
 
     console.log(`Starting cleanup for session ${sessionId} [${force ? 'forced' : 'normal'}]`);
+
+    // Mark any existing initialization as terminated
+    const existingInit = this.activeInitializations.get(sessionId);
+    if (existingInit) {
+      existingInit.isTerminated = true;
+    }
 
     // Mark session as terminated
     await writeSessionState(sessionId, this.config.AUTH_FOLDER, {
@@ -247,6 +253,7 @@ export class SessionManager {
       try {
         await this.clientInitializer.cleanup(sessionId, true);
         await deleteSessionState(sessionId, this.config.AUTH_FOLDER);
+        this.activeInitializations.delete(sessionId);
       } catch (error) {
         console.error(`Error during session cleanup for ${sessionId}:`, error);
         throw error;
@@ -302,6 +309,11 @@ export class SessionManager {
       this.cleanupInterval = null;
     }
 
+    // Mark all initializations as terminated
+    for (const init of this.activeInitializations.values()) {
+      init.isTerminated = true;
+    }
+
     for (const [sessionId, handler] of this.eventHandlers.entries()) {
       handler.cleanup();
       this.eventHandlers.delete(sessionId);
@@ -313,6 +325,7 @@ export class SessionManager {
       await sleep(1000);
     }
 
+    this.activeInitializations.clear();
     console.log('Session manager shutdown complete');
   }
 }

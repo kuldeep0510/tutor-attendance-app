@@ -10,6 +10,32 @@ whatsappRouter.get('/connect', async (req, res) => {
     const userId = req.headers['x-user-id'] as string || 'default';
     console.log('Connecting WhatsApp for user:', userId);
 
+    // Check if session is already initializing
+    const existingSession = await sessionManager.getSession(userId);
+    if (existingSession?.isInitializing) {
+      console.log('Session is already initializing');
+      return res.status(409).json({
+        status: 'error',
+        error: 'Session is already initializing',
+        data: {
+          isInitializing: true,
+          qr: existingSession.qr
+        }
+      });
+    }
+
+    // Check if session is already connected
+    if (existingSession?.isReady) {
+      console.log('Session is already connected');
+      return res.json({
+        status: 'success',
+        data: {
+          connected: true,
+          hasSession: true
+        }
+      });
+    }
+
     // Check if we should restore or create new session
     const shouldRestore = req.headers['x-restore-session'] === 'true';
     const sessionId = sessionManager['generateSessionId'](userId);
@@ -18,11 +44,10 @@ whatsappRouter.get('/connect', async (req, res) => {
     // Don't allow restore if no valid session exists
     if (shouldRestore && !hasExistingSession) {
       console.log('No valid session to restore');
-      res.status(400).json({
+      return res.status(400).json({
         status: 'error',
         error: 'No valid session to restore'
       });
-      return;
     }
 
     // Create new session or restore existing one
@@ -155,6 +180,16 @@ whatsappRouter.post('/disconnect', async (req, res) => {
   try {
     const userId = req.headers['x-user-id'] as string || 'default';
     console.log('Disconnecting WhatsApp for user:', userId);
+
+    // Check if session is initializing
+    const session = await sessionManager.getSession(userId);
+    if (session?.isInitializing) {
+      console.log('Cannot disconnect while session is initializing');
+      return res.status(409).json({
+        status: 'error',
+        error: 'Cannot disconnect while session is initializing'
+      });
+    }
     
     await sessionManager.cleanupSession(userId, true);
     res.json({ status: 'success' });
