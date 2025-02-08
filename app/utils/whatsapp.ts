@@ -11,51 +11,78 @@ const defaultOptions: RequestInit = {
   },
   mode: 'cors',
   credentials: 'include',
-  signal: AbortSignal.timeout(120000) // 120 second timeout using AbortSignal
+  signal: AbortSignal.timeout(60000) // 60 second timeout using AbortSignal
 }
 
-// Add retry mechanism for failed requests
+// Enhanced retry mechanism for failed requests with better error handling
 async function fetchWithRetry(
   url: string,
   options: RequestInit,
-  retries = 3, // Reduced retries to prevent queue buildup
-  backoff = 2000
+  maxRetries = 3,
+  initialBackoff = 1000
 ): Promise<Response> {
-  try {
-    const response = await fetch(url, options);
-    
-    // Only retry on specific error conditions
-    if (!response.ok && retries > 0) {
-      const errorText = await response.text();
-      console.log(`Request failed with status ${response.status}: ${errorText}`);
+  let retryCount = 0;
+  let backoff = initialBackoff;
+  
+  while (true) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
       
-      // Don't retry on auth errors, invalid requests, or if session is in progress
-      if (response.status !== 401 && response.status !== 400 && !errorText.includes('already initializing')) {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      // Don't retry on these status codes
+      if (response.status === 401 || response.status === 400 || response.status === 404) {
+        return response;
+      }
+      
+      // Success case
+      if (response.ok) {
+        return response;
+      }
+      
+      // Handle specific error cases
+      if (response.status === 429) { // Rate limit
+        backoff = Math.min(backoff * 2, 30000); // Max 30s backoff for rate limits
+        const retryAfter = response.headers.get('Retry-After');
+        if (retryAfter) {
+          backoff = Math.max(backoff, parseInt(retryAfter) * 1000);
+        }
+      } else if (response.status >= 500) { // Server errors
+        backoff = Math.min(backoff * 1.5, 15000); // Max 15s backoff for server errors
+      } else {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      return response;
+      
+      // Check if we should retry
+      if (retryCount >= maxRetries) {
+        return response;
+      }
+      
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, backoff));
+      retryCount++;
+      console.log(`Retrying request (${retryCount}/${maxRetries}) after ${backoff}ms`);
+      
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        if (retryCount >= maxRetries) {
+          throw new Error('Request timeout after multiple retries');
+        }
+      } else if (retryCount >= maxRetries) {
+        throw error;
+      }
+      
+      backoff = Math.min(backoff * 1.5, 15000);
+      await new Promise(resolve => setTimeout(resolve, backoff));
+      retryCount++;
+      console.log(`Retrying request (${retryCount}/${maxRetries}) after error: ${error}`);
     }
-    return response;
-  } catch (error: unknown) {
-    if (retries === 0) throw error;
-    
-    if (error instanceof Error) {
-      console.log(`Request failed (${error.message}), retrying in ${backoff}ms...`);
-    } else {
-      console.log(`Request failed, retrying in ${backoff}ms...`);
-    }
-    
-    await new Promise(resolve => setTimeout(resolve, backoff));
-    
-    return fetchWithRetry(
-      url, 
-      {
-        ...options,
-        signal: AbortSignal.timeout(120000) // Reset timeout for retry
-      },
-      retries - 1,
-      Math.min(backoff * 2, 15000) // Exponential backoff, max 15s
-    );
   }
 }
 
@@ -63,12 +90,8 @@ async function fetchWithRetry(
  * Get the base URL for WhatsApp API requests based on environment
  */
 function getBaseUrl(): string {
-  return '/api/whatsapp'; // Keep using the API route since Vercel handles the forwarding
+  return '/api/whatsapp';
 }
-
-// Track the last connection attempt time
-let lastConnectionAttempt = 0;
-const MIN_CONNECTION_INTERVAL = 5000; // Minimum 5 seconds between connection attempts
 
 /**
  * Execute a WhatsApp API request with consistent options
@@ -92,15 +115,6 @@ async function whatsappRequest(
   };
 
   try {
-    // For connect requests, implement rate limiting
-    if (endpoint === '/connect') {
-      const now = Date.now();
-      if (now - lastConnectionAttempt < MIN_CONNECTION_INTERVAL) {
-        throw new Error('Please wait a few seconds before trying to connect again');
-      }
-      lastConnectionAttempt = now;
-    }
-
     const response = await fetchWithRetry(url, finalOptions);
     if (!response.ok) {
       let errorMessage: string;
@@ -201,19 +215,10 @@ export async function initializeConnection(restore: boolean = false): Promise<{ 
 
     const connectRes = await whatsappRequest('/connect', options);
     
-    if (!connectRes.ok && connectRes.status !== 409) { // 409 means session is already initializing
-      throw new Error(await connectRes.text());
-    }
-    
     const data = await connectRes.json();
     
     if (data.status === 'error') {
-      if (data.error.includes('already initializing')) {
-        // If session is initializing, just wait for status updates
-        console.log('Session is already initializing, waiting for updates...');
-      } else {
-        throw new Error(data.error);
-      }
+      throw new Error(data.error);
     }
 
     if (data.data?.connected) {
@@ -224,9 +229,9 @@ export async function initializeConnection(restore: boolean = false): Promise<{ 
       return { qr: data.data.qr };
     }
 
-    // Start polling for status
+    // If no immediate connection or QR, start polling for status
     let attempts = 0;
-    const maxAttempts = 60; // 60 seconds with 1-second intervals
+    const maxAttempts = 30; // 30 seconds with 1-second intervals
     
     while (attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -274,6 +279,9 @@ export async function sendWhatsAppMessage(
     return data.status === 'success';
   } catch (error) {
     console.error('Error sending WhatsApp message:', error);
+    if (error instanceof Error && error.message.includes('timeout')) {
+      throw new Error('Server timeout. Please try again.');
+    }
     return false;
   }
 }

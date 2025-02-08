@@ -1,11 +1,22 @@
 # Dependencies
 node_modules/
-dist/
+package-lock.json
+
+# Build
+/dist
+/build
+*.tsbuildinfo
 
 # Environment
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+
+# WhatsApp files and cache
+.wwebjs_auth/
+.wwebjs_cache/
+chrome-data/
+*.session.json
 
 # Logs
 logs
@@ -18,13 +29,11 @@ pids
 *.seed
 *.pid.lock
 
-# WhatsApp session data
-.wwebjs_auth/
-.wwebjs_cache/
-
 # IDE
-.vscode/
 .idea/
+.vscode/
+*.swp
+*.swo
 
 # OS
 .DS_Store

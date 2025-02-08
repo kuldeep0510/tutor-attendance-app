@@ -2,22 +2,43 @@ services:
   - type: web
     name: whatsapp-server
     env: docker
-    region: singapore # Closest to India
+    region: singapore
     plan: free
     healthCheckPath: /
     envVars:
       - key: PORT
         value: 3001
-      - key: WHATSAPP_CLIENT_ID
-        value: tutor-app
-      - key: ALLOWED_ORIGINS
-        sync: false # This will be set manually in Render dashboard
-      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
-        value: "true"
       - key: NODE_ENV
         value: production
-      # Chrome specific flags
-      - key: PUPPETEER_ARGS
-        value: "--no-sandbox --disable-setuid-sandbox"
+      - key: WHATSAPP_CLIENT_ID
+        value: tutor-app
+      - key: WHATSAPP_DEBUG
+        value: "false"
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: CHROME_PATH
+        value: /usr/bin/google-chrome
+      - key: PUPPETEER_EXECUTABLE_PATH
+        value: /usr/bin/google-chrome
+      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
+        value: "true"
+      - key: WWEBJS_CACHE_DIR
+        value: /usr/src/app/.wwebjs_cache
+      - key: WWEBJS_AUTH_DIR
+        value: /usr/src/app/.wwebjs_auth
+    disk:
+      name: whatsapp-data
+      mountPath: /usr/src/app
+      sizeGB: 1
     buildCommand: docker build -t whatsapp-server .
-    startCommand: docker run -p $PORT:3001 --cap-add=SYS_ADMIN whatsapp-server
+    startCommand: >
+      docker run 
+      --shm-size=1gb 
+      -p $PORT:3001 
+      -v ${RENDER_VOLUME_PATH}/.wwebjs_auth:/usr/src/app/.wwebjs_auth 
+      -v ${RENDER_VOLUME_PATH}/.wwebjs_cache:/usr/src/app/.wwebjs_cache 
+      whatsapp-server

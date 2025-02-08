@@ -3,29 +3,25 @@
     "target": "ES2020",
     "module": "commonjs",
     "lib": ["es2020"],
-    "outDir": "dist",
-    "rootDir": "src",
+    "outDir": "./dist",
+    "rootDir": "./src",
     "strict": true,
     "moduleResolution": "node",
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "allowJs": true,
-    "checkJs": false,
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]
     },
     "typeRoots": [
-      "./node_modules/@types"
-    ],
-    "types": [
-      "node"
+      "./node_modules/@types",
+      "./src/types"
     ]
   },
   "include": [
-    "src/**/*"
+    "src/**/*.ts"
   ],
   "exclude": [
     "node_modules",

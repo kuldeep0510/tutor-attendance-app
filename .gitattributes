@@ -1,21 +1,3 @@
-# Node modules binary files
-*.node filter=lfs diff=lfs merge=lfs -text
-# Documents and archives
-*.pdf filter=lfs diff=lfs merge=lfs -text
-*.zip filter=lfs diff=lfs merge=lfs -text
-*.gz filter=lfs diff=lfs merge=lfs -text
-# Images
-*.png filter=lfs diff=lfs merge=lfs -text
-*.jpg filter=lfs diff=lfs merge=lfs -text
-*.jpeg filter=lfs diff=lfs merge=lfs -text
-*.gif filter=lfs diff=lfs merge=lfs -text
-*.ico filter=lfs diff=lfs merge=lfs -text
-*.svg filter=lfs diff=lfs merge=lfs -text
-# Audio files
-*.mp3 filter=lfs diff=lfs merge=lfs -text
-*.wav filter=lfs diff=lfs merge=lfs -text
-# Large text files
-*.lock filter=lfs diff=lfs merge=lfs -text
+server/package-lock.json filter=lfs diff=lfs merge=lfs -text
+public/* filter=lfs diff=lfs merge=lfs -text
 package-lock.json filter=lfs diff=lfs merge=lfs -text
-# Build artifacts
-.next/**/* filter=lfs diff=lfs merge=lfs -text
